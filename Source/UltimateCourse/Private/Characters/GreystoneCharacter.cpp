@@ -18,9 +18,13 @@
 #include "Animation/AnimMontage.h"
 #include "HUD/GreystoneHUD.h"
 #include "HUD/GreystoneOverlay.h"
+#include "Interfaces/OnlineSessionInterface.h"
+#include "OnlineSessionSettings.h"
+
 
 // Sets default values
- AGreystoneCharacter::AGreystoneCharacter()
+ AGreystoneCharacter::AGreystoneCharacter() :
+	 CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this,&ThisClass::OnCreateSessionComplete))
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
@@ -44,6 +48,18 @@
 	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Block);
 	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldDynamic, ECollisionResponse::ECR_Overlap);
 	GetMesh()->SetGenerateOverlapEvents(true);
+
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	if (OnlineSubsystem)
+	{
+		OnlineSessionInterface = OnlineSubsystem->GetSessionInterface();
+		
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Blue, FString::Printf(TEXT("Created session %s"), *OnlineSubsystem->GetSubsystemName().ToString()));
+		}
+	}
+
 }
 
 // Called when the game starts or when spawned
@@ -86,6 +102,8 @@ void AGreystoneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	EnhancedInputComponent->BindAction(EquipAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::EKeyPressed);
 	EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::Attack);
 	EnhancedInputComponent->BindAction(DodgeAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::Dodge);
+	EnhancedInputComponent->BindAction(CreateSessionAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::CreateGameSession);
+
 
 }
 
@@ -313,7 +331,8 @@ void AGreystoneCharacter::Die_Implementation(const FName& SectionName)
 {
 	Super::Die_Implementation(SectionName);
 	ActionState = EActionState::EAS_Dead;
-	/* int32 DeathMontagePose = PlayDeathMontage();
+	/* Commented out since implemented inside ABP 
+	int32 DeathMontagePose = PlayDeathMontage();
 	 switch (DeathMontagePose)
 	{
 	case 0:
@@ -365,5 +384,51 @@ void AGreystoneCharacter::SetHUDHealth()
 	if (GreystoneOverlay && Attributes)
 	{
 		GreystoneOverlay->SetHealthBarPercent(Attributes->GetHealthPercent());
+	}
+}
+
+
+
+void AGreystoneCharacter::CreateGameSession()
+{
+	if (!OnlineSessionInterface.IsValid()) return;
+
+	FNamedOnlineSession* ExistingSession = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
+
+	if (ExistingSession != nullptr)
+	{
+		OnlineSessionInterface->DestroySession(NAME_GameSession);
+	}
+
+	OnlineSessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
+
+	TSharedPtr<FOnlineSessionSettings> SessionSettings = MakeShareable(new FOnlineSessionSettings());
+	SessionSettings->NumPublicConnections = 12;
+	SessionSettings->bAllowJoinInProgress = true;
+	SessionSettings->bAllowJoinViaPresence = true;
+	SessionSettings->bShouldAdvertise = true;
+	SessionSettings->bUsesPresence = true;
+	
+
+
+	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+	OnlineSessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *SessionSettings);
+}
+
+void AGreystoneCharacter::OnCreateSessionComplete(FName SessionName, bool bWasSuccesful)
+{
+	if (bWasSuccesful)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Blue, FString::Printf(TEXT("Created session %s"), *SessionName.ToString()));
+		}
+	}
+	else
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Red, FString(TEXT("Failed to create session")));
+		}
 	}
 }

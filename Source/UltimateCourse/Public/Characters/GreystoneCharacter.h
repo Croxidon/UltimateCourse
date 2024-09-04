@@ -7,6 +7,8 @@
 #include "InputActionValue.h"
 #include "CharacterStates.h"
 #include "Interfaces/PickupInterface.h"
+#include "Interfaces/OnlineSessionDelegates.h"
+#include "OnlineSubsystem.h"
 #include "GreystoneCharacter.generated.h"
 
 class UInputMappingContext;
@@ -18,6 +20,7 @@ class UAnimMontage;
 class AWeapon;
 class UGreystoneOverlay;
 class ASoul;
+class IOnlineSessionInterface;;
 
 UCLASS()
 class ULTIMATECOURSE_API AGreystoneCharacter : public ABaseCharacter, public IPickupInterface
@@ -44,6 +47,9 @@ public:
 
 	 FORCEINLINE ECharacterState GetCharacterState() const { return CharacterState; };
 
+	 // Multiplayer
+	 IOnlineSessionPtr OnlineSessionInterface;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -64,6 +70,8 @@ protected:
 	UInputAction* AttackAction;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* DodgeAction;
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* CreateSessionAction;
 
 	/**
 	 * Callbacks for inputs
@@ -96,6 +104,12 @@ protected:
 	bool HasEnoughStamina();
 	bool IsOccupied();
 
+	// Multiplayer
+	UFUNCTION(BlueprintCallable)
+	void CreateGameSession();
+	
+	void OnCreateSessionComplete(FName SessionName, bool bWasSuccesful);
+
 private:	
 	bool IsUnoccupied();
 
@@ -118,4 +132,7 @@ private:
 
 	UPROPERTY()
 	UGreystoneOverlay* GreystoneOverlay;
+
+	// Multiplayer
+	FOnCreateSessionCompleteDelegate CreateSessionCompleteDelegate;
 };

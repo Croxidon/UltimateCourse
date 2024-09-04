@@ -11,5 +11,6 @@ public class UltimateCourseTarget : TargetRules
 		DefaultBuildSettings = BuildSettingsVersion.V4;
 		IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
 		ExtraModuleNames.Add("UltimateCourse");
-	}
+        bUseIris = true;
+    }
 }
