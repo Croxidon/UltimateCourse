@@ -9,6 +9,7 @@
 #include "Interfaces/PickupInterface.h"
 #include "Interfaces/OnlineSessionDelegates.h"
 #include "OnlineSubsystem.h"
+#include "Interfaces/OnlineSessionInterface.h"
 #include "GreystoneCharacter.generated.h"
 
 class UInputMappingContext;
@@ -49,7 +50,8 @@ public:
 
 	 // Multiplayer
 	 IOnlineSessionPtr OnlineSessionInterface;
-
+	 IOnlineSubsystem* OnlineSubsystem;
+	 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -72,6 +74,10 @@ protected:
 	UInputAction* DodgeAction;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* CreateSessionAction;
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* JoinSessionAction;
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* QuitGameAction;
 
 	/**
 	 * Callbacks for inputs
@@ -83,6 +89,7 @@ protected:
 	void EquipWeapon(AWeapon* OverlappingWeapon);
 	virtual void Attack() override;
 	void Dodge();
+	void QuitGame();
 
 	
 
@@ -105,10 +112,13 @@ protected:
 	bool IsOccupied();
 
 	// Multiplayer
-	UFUNCTION(BlueprintCallable)
-	void CreateGameSession();
 	
+	void CreateGameSession();
 	void OnCreateSessionComplete(FName SessionName, bool bWasSuccesful);
+	void JoinGameSession();
+	void OnFindSessionsComplete(bool bWasSuccesful);
+	void OnJoinSessionComplete(FName JoinedSessionName, EOnJoinSessionCompleteResult::Type Result);
+	bool IsValidSessionInterface();
 
 private:	
 	bool IsUnoccupied();
@@ -135,4 +145,7 @@ private:
 
 	// Multiplayer
 	FOnCreateSessionCompleteDelegate CreateSessionCompleteDelegate;
+	FOnFindSessionsCompleteDelegate FindSessionsCompleteDelegate;
+	TSharedPtr<class FOnlineSessionSearch> SessionSearch;
+	FOnJoinSessionCompleteDelegate JoinSessionCompleteDelegate;
 };

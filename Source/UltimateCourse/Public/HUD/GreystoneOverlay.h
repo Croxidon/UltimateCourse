@@ -19,7 +19,8 @@ public:
 	void SetStaminaBarPercent(float Percent);
 	void SetGold(int32 Gold);
 	void SetSouls(int32 Souls);
-
+	void SetSessionText(FString CreatedSessionName);
+	void SetSubsystemText(FString OnlineSubsystemName);
 
 
 
@@ -36,5 +37,10 @@ private:
 	UPROPERTY(meta = (BindWidget))
 	class UTextBlock* SoulsText;
 
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* SubsystemNameText;
+
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* SessionCreationText;
 
 };

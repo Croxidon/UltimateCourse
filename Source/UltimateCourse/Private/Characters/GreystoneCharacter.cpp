@@ -20,11 +20,16 @@
 #include "HUD/GreystoneOverlay.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
+#include "Online/OnlineSessionNames.h"
+#include "Kismet/KismetSystemLibrary.h"
+
 
 
 // Sets default values
  AGreystoneCharacter::AGreystoneCharacter() :
-	 CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this,&ThisClass::OnCreateSessionComplete))
+	 CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this,&ThisClass::OnCreateSessionComplete)),
+	 FindSessionsCompleteDelegate(FOnFindSessionsCompleteDelegate::CreateUObject(this, &ThisClass::OnFindSessionsComplete)),
+	 JoinSessionCompleteDelegate(FOnJoinSessionCompleteDelegate::CreateUObject(this,&ThisClass::OnJoinSessionComplete))
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
@@ -49,16 +54,7 @@
 	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldDynamic, ECollisionResponse::ECR_Overlap);
 	GetMesh()->SetGenerateOverlapEvents(true);
 
-	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
-	if (OnlineSubsystem)
-	{
-		OnlineSessionInterface = OnlineSubsystem->GetSessionInterface();
-		
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Blue, FString::Printf(TEXT("Created session %s"), *OnlineSubsystem->GetSubsystemName().ToString()));
-		}
-	}
+	
 
 }
 
@@ -103,6 +99,8 @@ void AGreystoneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::Attack);
 	EnhancedInputComponent->BindAction(DodgeAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::Dodge);
 	EnhancedInputComponent->BindAction(CreateSessionAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::CreateGameSession);
+	EnhancedInputComponent->BindAction(JoinSessionAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::JoinGameSession);
+	EnhancedInputComponent->BindAction(QuitGameAction, ETriggerEvent::Triggered, this, &AGreystoneCharacter::QuitGame);
 
 
 }
@@ -250,6 +248,11 @@ void AGreystoneCharacter::Dodge()
 	}
 }
 
+void AGreystoneCharacter::QuitGame()
+{
+	UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+}
+
 bool AGreystoneCharacter::HasEnoughStamina()
 {
 	return Attributes && Attributes->GetStamina() > Attributes->GetDodgeCost();
@@ -391,7 +394,7 @@ void AGreystoneCharacter::SetHUDHealth()
 
 void AGreystoneCharacter::CreateGameSession()
 {
-	if (!OnlineSessionInterface.IsValid()) return;
+	if (!IsValidSessionInterface()) return;
 
 	FNamedOnlineSession* ExistingSession = OnlineSessionInterface->GetNamedSession(NAME_GameSession);
 
@@ -408,7 +411,9 @@ void AGreystoneCharacter::CreateGameSession()
 	SessionSettings->bAllowJoinViaPresence = true;
 	SessionSettings->bShouldAdvertise = true;
 	SessionSettings->bUsesPresence = true;
-	
+	SessionSettings->bUseLobbiesIfAvailable = true;
+	SessionSettings->Set(FName("MatchType"), FString("FreeForAll"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
 
 
 	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
@@ -417,11 +422,21 @@ void AGreystoneCharacter::CreateGameSession()
 
 void AGreystoneCharacter::OnCreateSessionComplete(FName SessionName, bool bWasSuccesful)
 {
+	FString string;
 	if (bWasSuccesful)
 	{
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Blue, FString::Printf(TEXT("Created session %s"), *SessionName.ToString()));
+			
+		}
+
+		string = FString::Printf(TEXT("Created session %s"), *SessionName.ToString());
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			World->ServerTravel(FString("Game/Maps/Domadia?listen"));
+
 		}
 	}
 	else
@@ -429,6 +444,104 @@ void AGreystoneCharacter::OnCreateSessionComplete(FName SessionName, bool bWasSu
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Red, FString(TEXT("Failed to create session")));
+
+		}
+
+		string = FString(TEXT("Failed to create session."));
+	}
+	
+}
+
+void AGreystoneCharacter::JoinGameSession()
+{
+	if (!IsValidSessionInterface()) return;
+
+	//Find game sessions
+
+	OnlineSessionInterface->AddOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegate);
+
+	SessionSearch = MakeShareable(new FOnlineSessionSearch());
+	SessionSearch->MaxSearchResults = 10000;
+	SessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
+
+	
+	OnlineSessionInterface->FindSessions(*(GetWorld()->GetFirstLocalPlayerFromController()->GetPreferredUniqueNetId()), SessionSearch.ToSharedRef());
+}
+
+void AGreystoneCharacter::OnFindSessionsComplete(bool bWasSuccessful)
+{
+	if (!IsValidSessionInterface()) return;
+
+	for (FOnlineSessionSearchResult Result : SessionSearch->SearchResults)
+	{
+		FString Id = Result.GetSessionIdStr();
+		FString User = Result.Session.OwningUserName;
+		FString MatchType;
+		Result.Session.SessionSettings.Get(FName("MatchType"), MatchType);
+
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				15.f,
+				FColor::Red,
+				FString::Printf(TEXT("Id: %s, User: %s"), *Id, *User)
+			);
+		}
+
+		if (MatchType == FString("FreeForAll"))  // Corrected parenthesis
+		{
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(
+					-1,
+					15.f,
+					FColor::Red,
+					FString::Printf(TEXT("Joining match type: %s"), *MatchType)
+				);
+			}
+
+			OnlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
+			OnlineSessionInterface->JoinSession(*(GetWorld()->GetFirstLocalPlayerFromController()->GetPreferredUniqueNetId()), NAME_GameSession, Result);
+
 		}
 	}
+}
+
+void AGreystoneCharacter::OnJoinSessionComplete(FName JoinedSessionName, EOnJoinSessionCompleteResult::Type Result)
+{
+	if (!IsValidSessionInterface()) return;
+
+	FString Address;
+	if (OnlineSessionInterface->GetResolvedConnectString(NAME_GameSession, Address))
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				15.f,
+				FColor::Yellow,
+				FString::Printf(TEXT("Connect string: %s"), *Address)
+			);
+		}
+
+		APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+		if (PlayerController)
+		{
+			PlayerController->ClientTravel(Address, ETravelType::TRAVEL_Absolute);
+		}
+	}
+}
+
+bool AGreystoneCharacter::IsValidSessionInterface()
+{
+	if (!OnlineSessionInterface)
+	{
+		IOnlineSubsystem* Subsystem = IOnlineSubsystem::Get();
+		if (Subsystem)
+		{
+			OnlineSessionInterface = Subsystem->GetSessionInterface();
+		}
+	}
+	return OnlineSessionInterface.IsValid();
 }

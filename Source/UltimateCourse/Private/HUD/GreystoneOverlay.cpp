@@ -36,3 +36,19 @@ void UGreystoneOverlay::SetSouls(int32 Souls)
 		SoulsText->SetText(FText::FromString(FString::Printf(TEXT("%d"), Souls)));
 	}
 }
+
+void UGreystoneOverlay::SetSessionText(FString CreatedSessionName)
+{
+	if (SessionCreationText)
+	{
+		SessionCreationText->SetText(FText::FromString(CreatedSessionName));
+	}
+}
+
+void UGreystoneOverlay::SetSubsystemText(FString OnlineSubsystemName)
+{
+	if (SubsystemNameText)
+	{
+		SubsystemNameText->SetText(FText::FromString(OnlineSubsystemName));
+	}
+}
